@@ -1,0 +1,42 @@
+{
+  "name": "punchcard",
+  "version": "0.1.0",
+  "description": "Reconstruct your week from what you actually did, review it, then submit it. Timesheet automation for developers.",
+  "type": "module",
+  "bin": {
+    "punch": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "timesheet",
+    "time-tracking",
+    "toggl",
+    "clockify",
+    "jira",
+    "tempo",
+    "cli",
+    "git"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "picocolors": "^1.1.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

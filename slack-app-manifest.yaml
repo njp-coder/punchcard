@@ -1,0 +1,26 @@
+# punchcard Slack app manifest.
+#
+# Paste at api.slack.com/apps -> Create an App -> "From a manifest".
+#
+# Deliberately minimal: display information and user scopes, nothing else.
+# A previous version also set an explicit `settings:` block, and Slack rejected
+# the install as "requesting administrative permissions" even though none of
+# these scopes is an admin scope. Declaring only what is needed avoids Slack
+# inferring org-level capability from keys that were only ever set to false.
+#
+# Scopes, and why each is needed:
+#   im:history  read the messages in the DM you have with yourself
+#   im:read     find that DM (Slack will not "open" a DM with yourself)
+#   im:write    fallback for workspaces where opening it does work
+#
+# No channel access, no file access, nobody else's messages.
+# punchcard polls; it never posts.
+display_information:
+  name: punchcard
+
+oauth_config:
+  scopes:
+    user:
+      - im:history
+      - im:read
+      - im:write

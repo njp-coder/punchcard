@@ -29,6 +29,7 @@ import { applyOverrides } from './engine/overrides.js';
 import { executePush, planPush, relinkLedger } from './engine/reconcile.js';
 import {
   computeGaps,
+  entryHash,
   isUnassigned,
   reconstruct,
   type ReconstructResult,
@@ -270,7 +271,11 @@ async function cmdReview(periodRef: string | undefined, flags: Flags): Promise<v
   }
 
   for (const key of parsed.deletedKeys) {
-    setOverride(key, { deleted: true });
+    const target = before.get(key);
+    setOverride(key, {
+      deleted: true,
+      ...(target ? { deletedHash: entryHash(target) } : {}),
+    });
     changed++;
   }
 

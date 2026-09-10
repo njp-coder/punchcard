@@ -70,6 +70,23 @@ export function knownSignalIds(): Set<string> {
   return ids;
 }
 
+/** Every manual signal on file, unfiltered by period. */
+export function existingManualSignals(): Signal[] {
+  const path = join(ensureDir(), MANUAL_LOG);
+  if (!existsSync(path)) return [];
+
+  const out: Signal[] = [];
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      out.push(JSON.parse(line) as Signal);
+    } catch {
+      // Torn line; skip it rather than losing the ledger.
+    }
+  }
+  return out;
+}
+
 export function readManualSignals(period: Period): Signal[] {
   const path = join(ensureDir(), MANUAL_LOG);
   if (!existsSync(path)) return [];
@@ -132,6 +149,15 @@ export interface Override {
   billable?: boolean;
   /** You deleted this line during review. We won't propose it again. */
   deleted?: boolean;
+  /**
+   * What the entry looked like when you deleted it.
+   *
+   * A deletion hides the hours you actually saw, not the bucket forever. New
+   * evidence landing in the same (date, project) slot later would otherwise
+   * disappear silently, which for a tool that promises never to drop hours is
+   * the worst possible failure.
+   */
+  deletedHash?: string;
   editedAt: number;
 }
 

@@ -1,9 +1,10 @@
 import type { Config } from '../config.js';
 import { resolveSecret } from '../config.js';
 import { HttpClient } from '../adapters/http.js';
-import { appendManualSignal, knownSignalIds } from '../store.js';
+import { appendManualSignal, existingManualSignals, knownSignalIds } from '../store.js';
 import type { Signal } from '../types.js';
 import { parseManualEntry } from './manual.js';
+import { localDate } from '../util/time.js';
 
 /**
  * Slack as a capture surface.
@@ -118,7 +119,18 @@ export async function syncSlack(cfg: Config): Promise<SlackSyncResult> {
   const seen = knownSignalIds();
   const result: SlackSyncResult = { scanned: 0, imported: 0, skipped: 0, unparsed: [] };
 
-  for (const message of history.messages ?? []) {
+  // Earliest start already claimed per day, seeded from what is on file so a
+  // second sync stacks behind the first rather than on top of it.
+  const claimed = new Map<string, number>();
+  for (const signal of existingManualSignals()) {
+    const day = localDate(signal.start);
+    claimed.set(day, Math.min(claimed.get(day) ?? signal.start, signal.start));
+  }
+
+  // Oldest first, so each new entry stacks behind the one before it.
+  const ordered = [...(history.messages ?? [])].sort((a, b) => Number(a.ts) - Number(b.ts));
+
+  for (const message of ordered) {
     // Ignore joins, topic changes, and anything a bot wrote.
     if (message.subtype || message.bot_id) continue;
     // In a shared channel, only your own messages are your timesheet.
@@ -136,7 +148,18 @@ export async function syncSlack(cfg: Config): Promise<SlackSyncResult> {
       continue;
     }
 
-    const at = Number(message.ts) * 1000;
+    // Anchor the entry so it ends where the earliest already-claimed manual
+    // block on that day begins, rather than at the message timestamp.
+    //
+    // People log in bursts: three messages in five minutes, each saying "last
+    // half an hour". Anchored at their timestamps they all reach backwards
+    // over the same minutes, and the timeline sweep then clips two of them to
+    // almost nothing. Stacking them backwards preserves what each person
+    // actually said while still never double-counting a minute.
+    const messageAt = Number(message.ts) * 1000;
+    const day = localDate(messageAt);
+    const at = Math.min(messageAt, claimed.get(day) ?? messageAt);
+
     const parsed = parseManualEntry(stripSlackMarkup(text), { at });
 
     if (!parsed) {
@@ -148,6 +171,10 @@ export async function syncSlack(cfg: Config): Promise<SlackSyncResult> {
 
     const signal: Signal = { ...parsed, id, detail: 'logged in Slack' };
     appendManualSignal(signal);
+
+    const startedOn = localDate(signal.start);
+    claimed.set(startedOn, Math.min(claimed.get(startedOn) ?? signal.start, signal.start));
+
     result.imported++;
   }
 

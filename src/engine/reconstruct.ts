@@ -67,7 +67,16 @@ export function reconstruct(signals: Signal[], cfg: Config, period: Period): Rec
     // The issue key participates in identity: Jira and Tempo log against an
     // issue, so two issues on one project on one day are two worklogs.
     const issueKey = allocation.signal.hints.issueKey;
-    const bucketKey = `${allocation.date}|${resolved.project}|${issueKey ?? ''}`;
+
+    // Things a human stated are never merged with each other.
+    //
+    // Consolidation exists to stop nine commits becoming nine lines, but a
+    // person who wrote "30m sprint review" and "1h helping Priya" said two
+    // distinct things. Folding them into one row destroys what they told us,
+    // and makes a freshly synced message look like nothing happened.
+    const distinct = allocation.signal.source === 'manual' ? allocation.signal.id : '';
+
+    const bucketKey = `${allocation.date}|${resolved.project}|${issueKey ?? ''}|${distinct}`;
 
     let bucket = buckets.get(bucketKey);
     if (!bucket) buckets.set(bucketKey, (bucket = []));
@@ -77,7 +86,7 @@ export function reconstruct(signals: Signal[], cfg: Config, period: Period): Rec
   const entries: DraftEntry[] = [];
 
   for (const [bucketKey, group] of buckets) {
-    const [date, project, issueKey] = bucketKey.split('|');
+    const [date, project, issueKey, distinct] = bucketKey.split('|');
     const raw = group.reduce((sum, a) => sum + a.seconds, 0);
     const seconds = roundSeconds(raw, cfg.roundToMinutes);
     if (seconds <= 0) continue;
@@ -98,7 +107,7 @@ export function reconstruct(signals: Signal[], cfg: Config, period: Period): Rec
         summary: group.map(provenanceLine),
         confidence: weakestConfidence(group),
       },
-      key: entryKey(date!, project!, issueKey || undefined),
+      key: entryKey(date!, project!, issueKey || undefined, distinct || undefined),
     });
   }
 
@@ -203,9 +212,20 @@ function weakestConfidence(group: Allocation[]): Confidence {
  * of appending. Description and duration deliberately do *not* participate:
  * when they change we want an update, not a duplicate.
  */
-export function entryKey(date: string, project: string, issueKey?: string): string {
+export function entryKey(
+  date: string,
+  project: string,
+  issueKey?: string,
+  /**
+   * Extra discriminator for entries that must not merge with their siblings,
+   * currently the signal id of anything a human logged by hand. It has to be
+   * part of the key so an edit or deletion sticks to that one line rather than
+   * to every manual entry sharing the day and project.
+   */
+  distinct?: string,
+): string {
   return createHash('sha256')
-    .update(`${date}|${project}|${issueKey ?? ''}`)
+    .update(`${date}|${project}|${issueKey ?? ''}|${distinct ?? ''}`)
     .digest('hex')
     .slice(0, 16);
 }

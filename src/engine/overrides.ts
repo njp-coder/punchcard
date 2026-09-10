@@ -1,6 +1,6 @@
 import { getOverrides } from '../store.js';
 import type { DraftEntry } from '../types.js';
-import { entryKey } from './reconstruct.js';
+import { entryHash, entryKey } from './reconstruct.js';
 
 /**
  * Replay your corrections over a freshly reconstructed timesheet.
@@ -23,7 +23,12 @@ export function applyOverrides(entries: DraftEntry[]): DraftEntry[] {
       continue;
     }
 
-    if (override.deleted) continue;
+    if (override.deleted) {
+      // Honour the deletion only while the entry still matches what was
+      // deleted. Once new evidence changes it, it comes back rather than being
+      // swallowed by a stale decision.
+      if (!override.deletedHash || override.deletedHash === entryHash(entry)) continue;
+    }
 
     const project = override.project ?? entry.project;
 

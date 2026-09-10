@@ -370,6 +370,7 @@ let currentView = 'sheet';
 let unmappedExpanded = false;
 let issueState = null;
 let issuesExpanded = false;
+const expandedSources = new Set();
 
 async function api(path, options = {}) {
   const res = await fetch('/api/' + path, {
@@ -544,7 +545,10 @@ function sourceCard(source) {
   const card = document.createElement('div');
   card.className = 'source' + (source.status === 'planned' ? ' planned' : '');
 
-  const mark = source.status === 'connected' ? '\u2713' : '\u25cb';
+  const connected = source.status === 'connected';
+  const open = connected ? expandedSources.has(source.id) : true;
+
+  const mark = connected ? '\u2713' : '\u25cb';
   const badge = source.requirement === 'optional'
     ? ''
     : '<span class="badge ' + source.requirement + '">' + source.requirement + '</span>';
@@ -552,26 +556,46 @@ function sourceCard(source) {
   card.innerHTML =
     '<div class="dot">' + mark + '</div>' +
     '<div><div class="head"><h4>' + escapeHtml(source.label) + '</h4>' + badge + '</div>' +
-    '<div class="covers">' + escapeHtml(source.covers) + '</div>' +
+    // A connected source has already made its case. Showing what it covers and
+    // how to set it up on every render is what pushed later cards off screen.
+    (open ? '<div class="covers">' + escapeHtml(source.covers) + '</div>' : '') +
     '<div class="detail">' + escapeHtml(source.detail) + '</div>' +
-    (source.setup && (source.alwaysShowSetup || source.status !== 'connected')
+    (open && source.setup && (source.alwaysShowSetup || !connected)
       ? '<div class="detail">' + escapeHtml(source.setup) + '</div>'
       : '') +
     '</div>';
 
   const body = card.querySelector('div:last-child');
 
-  if (source.connect === 'calendar' && source.status !== 'planned') {
-    if (state.calendars.length) body.appendChild(calendarList());
-    body.appendChild(calendarConnect());
+  // Actions stay visible whether or not the card is expanded: syncing is a
+  // thing you do often, reconfiguring is not.
+  if (source.connect === 'slack' && connected) body.appendChild(syncButton());
+
+  if (open) {
+    if (source.example) body.appendChild(exampleBlock(source.example));
+
+    if (source.connect === 'calendar' && source.status !== 'planned') {
+      if (state.calendars.length) body.appendChild(calendarList());
+      body.appendChild(calendarConnect());
+    }
+
+    if (source.connect === 'slack' && source.status !== 'planned') {
+      if (!connected) body.appendChild(manifestBlock());
+      body.appendChild(credentialForm('slack', state.slackFields));
+    }
   }
 
-  if (source.example) body.appendChild(exampleBlock(source.example));
-
-  if (source.connect === 'slack' && source.status !== 'planned') {
-    if (source.status !== 'connected') body.appendChild(manifestBlock());
-    body.appendChild(credentialForm('slack', state.slackFields));
-    if (source.status === 'connected') body.appendChild(syncButton());
+  if (connected && (source.connect || source.example)) {
+    const toggle = document.createElement('button');
+    toggle.className = 'ghost';
+    toggle.style.marginTop = '8px';
+    toggle.textContent = open ? 'Hide settings' : 'Settings';
+    toggle.addEventListener('click', () => {
+      if (expandedSources.has(source.id)) expandedSources.delete(source.id);
+      else expandedSources.add(source.id);
+      render();
+    });
+    body.appendChild(toggle);
   }
 
   return card;

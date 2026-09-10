@@ -7,7 +7,7 @@ import { configPath, dataDir, saveConfig } from '../config.js';
 import { parseManualEntry } from '../collectors/manual.js';
 import { SLACK_APP_MANIFEST } from '../collectors/slack.js';
 import { executePush, planPush, relinkLedger } from '../engine/reconcile.js';
-import { isUnassigned } from '../engine/reconstruct.js';
+import { entryHash, isUnassigned } from '../engine/reconstruct.js';
 import {
   mappingKey,
   partitionByIssue,
@@ -277,7 +277,17 @@ async function handle(
         deleted?: boolean;
       }>(req);
 
-      if (body.deleted) setOverride(body.key, { deleted: true });
+      if (body.deleted) {
+        // Record what is being deleted, so later evidence in the same slot is
+        // not suppressed by this decision.
+        const period = resolvePeriod(cfg.period, 'current');
+        const current = await buildTimesheet(cfg, period);
+        const target = current.entries.find((e) => e.key === body.key);
+        setOverride(body.key, {
+          deleted: true,
+          ...(target ? { deletedHash: entryHash(target) } : {}),
+        });
+      }
       else if (body.seconds === undefined && body.project === undefined && !body.description) {
         // An empty patch means "forget my edit" — the entry goes back to
         // tracking evidence.
